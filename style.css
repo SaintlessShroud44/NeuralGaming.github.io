@@ -607,12 +607,12 @@ p {
 /*The fix*/
 
 /* ===== Container ===== */
-/* ===== Container ===== */
+/* ===== CONTAINER ===== */
 .video-gallery-container {
   width: 100%;
-  max-width: 1200px;              /* wider stage for more columns */
+  max-width: 1280px;                 /* wider stage */
   font-family: Arial, Helvetica, sans-serif;
-  padding: 16px 12px 32px;
+  padding: 32px 24px 48px;
   margin: 0 auto;
 }
 
@@ -621,127 +621,116 @@ p {
   box-sizing: border-box;
 }
 
-/* ===== GRID: auto-fit tiles ===== */
+/* ===== GRID LAYOUT (3 ➜ 2 ➜ 1 columns) ===== */
 .video-gallery {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 28px 24px;                 /* row / column gaps */
+  grid-template-columns: repeat(3, 1fr);
+  gap: 28px;
   align-items: start;
 }
 
-/* ===== Video card ===== */
+@media (max-width: 1024px) {
+  .video-gallery { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 640px) {
+  .video-gallery { grid-template-columns: 1fr; }
+}
+
+/* ===== VIDEO CARD ===== */
 .video {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  margin: 0;                      /* grid handles spacing */
+  gap: 10px;
+  margin: 0;
 }
 
-/* Media area that swaps img <-> video */
+/* ===== MEDIA AREA (rounded capsule + shadow) ===== */
 .video-media {
   position: relative;
   width: 100%;
-  aspect-ratio: 16 / 9;           /* consistent tile height */
-  border-radius: 12px;
-  overflow: hidden;               /* clip overlays to rounded corners */
+  aspect-ratio: 16 / 9;               /* consistent tile height */
+  border-radius: 22px;
+  overflow: hidden;
+  background: #000;
+  /* soft depth */
+  box-shadow:
+    0 12px 24px rgba(0,0,0,.35),
+    0 2px 6px rgba(0,0,0,.25);
+  transition: transform .18s ease, box-shadow .18s ease;
 }
 
-/* Image + video sizing */
+/* Optional orange rim — add class="video-media accent" if you want it */
+.video-media.accent { border: 2px solid #B75B0C; }
+
+.video:hover .video-media {
+  transform: translateY(-3px);
+  box-shadow:
+    0 18px 36px rgba(0,0,0,.42),
+    0 4px 10px rgba(0,0,0,.28);
+}
+
+/* Make thumbnail + iframe fill the capsule cleanly */
 .video-media img.thumbnail,
-.video-media video {
+.video-media .video-frame {
   width: 100%;
   height: 100%;
-  object-fit: cover;               /* fill 16:9 box nicely */
+  object-fit: cover;
   display: block;
-  border-radius: 12px;
+  border-radius: 22px;
 }
 
-/* Hover bump for thumbnails */
-.video-media img.thumbnail {
+/* ===== THUMBNAIL EFFECTS ===== */
+.thumbnail {
   cursor: pointer;
-  transition: transform 0.18s ease;
+  transition: opacity .25s ease, transform .18s ease;
 }
-.video-media img.thumbnail:hover { transform: scale(1.02); }
+.thumbnail:hover { transform: scale(1.02); }
 
-/* ===== Overlays ===== */
-.video-media .play-toggle,
-.video-media .thumb-play-icon {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 3;
-}
-
-/* Play/pause button ON the video element */
-.video-media .play-toggle {
-  width: 72px; height: 72px;
-  border-radius: 50%;
-  border: 1px solid rgba(255,255,255,.45);
-  background: rgba(0,0,0,.35);
-  color: #fff;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 30px; cursor: pointer;
-  backdrop-filter: blur(2px);
-}
-.video-media .play-toggle.hidden { display: none; }
-
-/* ▶ overlay ON the thumbnail image */
-.video-media .thumb-play-icon {
-  width: 80px; height: 80px;
-  border-radius: 50%;
-  background: rgba(0,0,0,0.45);
-  color: #fff; font-size: 38px; font-weight: bold;
-  line-height: 80px; text-align: center;
-  pointer-events: none;
-  z-index: 2;
-  transition: background .25s ease;
-}
-.video:hover .thumb-play-icon { background: rgba(0,0,0,0.7); }
-
-/* Click surface (if used) – covers video except control bar */
-.video-media .video-click-surface {
-  position: absolute;
-  left: 0; right: 0; top: 0;
-  /* bottom set from JS, e.g., bottom: 80px; */
-  z-index: 4;
-  background: transparent;
-  pointer-events: auto;
-  cursor: pointer;
-}
-
-/* ===== Titles ===== */
-.video-title {
-  margin-top: 8px;
-  font-size: 18px;
-  font-weight: bold;
-  color: #B75B0C;
-  text-align: center;
-  font-family: Arial, Helvetica, sans-serif;
-}
-
-/* ===== (Optional) old iframe block, safe to keep if used elsewhere) ===== */
-.featured-video {
-  position: relative;
-  width: 100%;
-  padding-top: 56.25%; /* 16:9 */
-}
-.featured-video iframe {
+/* ===== PLAY ICON (centered overlay) ===== */
+.thumb-play-icon {
   position: absolute;
   inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 40px;
+  color: #fff;
+  pointer-events: none;
+  opacity: .85;
+  transition: opacity .2s ease, background-color .2s ease;
+  background: radial-gradient(transparent, rgba(0,0,0,.25));
+}
+.video:hover .thumb-play-icon { opacity: 1; }
+
+/* ===== IFRAME PLAYER (fade-in) ===== */
+.video-media .video-frame {
+  display: none;                /* shown via JS */
   width: 100%;
   height: 100%;
   border: none;
-  border-radius: 8px;
+  border-radius: 22px;
+  opacity: 0;
+  transition: opacity .35s ease; /* smooth fade-in */
+}
+.video-media .video-frame.active {
+  display: block;
+  opacity: 1;
 }
 
-/* Single column on very small screens */
-@media (max-width: 560px) {
-  .video-gallery {
-    grid-template-columns: 1fr;
-    gap: 20px;
-  }
+/* ===== TITLE ===== */
+.video-title {
+  margin: 0;
+  text-align: center;
+  font-size: 16px;
+  font-weight: 600;
+  color: #e8e6e3;               /* light text */
+  letter-spacing: .2px;
 }
+
+/* ===== EXTRA SMALL tweak (very narrow phones) ===== */
+@media (max-width: 360px) {
+  .video-gallery-container { padding-left: 16px; padding-right: 16px; }
+}
+
 
 /*Why we exist*/
 

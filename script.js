@@ -52,104 +52,204 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 // ---------------- Moments (thumbnails ↔ video) ----------------
+// Toggle autoplay for YouTube iframes and HTML5 <video>
+const ADD_AUTOPLAY = false; // turn off to test Error 153
+
 document.addEventListener("DOMContentLoaded", () => {
-  let activeVideo = null, activeMedia = null;
+  let activePlayer = null;   // <video> or <iframe>
+  let activeMedia  = null;   // .video-media element
   const CONTROL_BAR_HEIGHT = 80;
 
-  const isInControlBar = (e, video) => {
-    const rect = video.getBoundingClientRect();
+  /* ================= Helpers ================= */
+  const isYouTubeUrl = (url) =>
+    /^(https?:)?\/\/(www\.)?(youtube\.com|youtu\.be)\//i.test(url);
+
+  // Build a privacy-friendly YouTube embed with correct origin
+  const toYouTubeEmbed = (url) => {
+    try {
+      const u = new URL(url, window.location.href);
+      let id = null;
+
+      if (u.hostname.includes("youtu.be")) {
+        id = u.pathname.slice(1);
+      } else if (u.hostname.includes("youtube.com")) {
+        if (u.pathname.startsWith("/embed/")) {
+          id = u.pathname.split("/").pop();
+        } else if (u.pathname === "/watch" && u.searchParams.get("v")) {
+          id = u.searchParams.get("v");
+        }
+      }
+      if (!id) return url;
+
+      const embed = new URL(`https://www.youtube-nocookie.com/embed/${id}`);
+
+      // carry common params if present
+      ["start", "si", "list", "index", "t"].forEach((k) => {
+        if (u.searchParams.has(k)) embed.searchParams.set(k, u.searchParams.get(k));
+      });
+
+      // sensible defaults
+      embed.searchParams.set("playsinline", "1");
+      embed.searchParams.set("rel", "0");
+      embed.searchParams.set("modestbranding", "1");
+
+      // important: provide origin when served via http(s)
+      if (location.origin && location.origin.startsWith("http")) {
+        embed.searchParams.set("origin", location.origin);
+      }
+      return embed.toString();
+    } catch {
+      return url;
+    }
+  };
+
+  const addAutoplayParam = (url) =>
+    ADD_AUTOPLAY ? url + (url.includes("?") ? "&" : "?") + "autoplay=1" : url;
+
+  const isInControlBar = (e, videoEl) => {
+    const rect = videoEl.getBoundingClientRect();
     return e.clientY > (rect.bottom - CONTROL_BAR_HEIGHT);
   };
 
-  const attachThumbHandler = (img) => {
-    img.addEventListener("click", () => toVideo(img));
+  const ensurePlayOverlay = (mediaEl) => {
+    if (!mediaEl) return;
+    if (!mediaEl.querySelector(".thumb-play-icon") && mediaEl.querySelector(".thumbnail")) {
+      const icon = document.createElement("div");
+      icon.className = "thumb-play-icon";
+      icon.textContent = "▶";
+      mediaEl.appendChild(icon);
+    }
   };
 
-  const toVideo = (img) => {
-    const wrapper = img.closest(".video");
-    const media = wrapper.querySelector(".video-media") || wrapper; // fallback
-    const videoSrc = img.dataset.video;
+  /* ================= Builders ================= */
+  const buildIframe = (src) => {
+    const iframe = document.createElement("iframe");
+    iframe.className = "video-frame";
+    iframe.src = addAutoplayParam(src);
+    iframe.title = "Video player";
+    iframe.frameBorder = "0";
+    iframe.allow =
+      "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
+    iframe.allowFullscreen = true;
+    requestAnimationFrame(() => iframe.classList.add("active")); // for CSS fade-in
+    return iframe;
+  };
 
-    // reset any other active video
-    if (activeVideo && activeMedia && activeMedia !== media) {
-      toThumbnail(activeMedia, activeVideo);
-      activeVideo = activeMedia = null;
-    }
-
+  const buildHTML5Video = (src) => {
     const video = document.createElement("video");
-    video.src = videoSrc;
+    video.src = src;
     video.controls = true;
-    video.autoplay = true;
+    video.autoplay = ADD_AUTOPLAY;
     video.playsInline = true;
     video.style.width = "100%";
+    video.style.height = "100%";
     video.style.borderRadius = "12px";
+    return video;
+  };
 
-    video.dataset.thumb = img.src;
-    video.dataset.alt = img.alt || "";
-    video.dataset.video = videoSrc;
-
+  const buildPlayToggleBtn = () => {
     const btn = document.createElement("button");
     btn.className = "play-toggle hidden";
     btn.type = "button";
     btn.textContent = "▶";
-
-    // allow slider interaction
-    video.addEventListener("click", (e) => {
-      if (isInControlBar(e, video)) return;
-      video.paused ? video.play() : video.pause();
-    });
-    btn.addEventListener("click", () => (video.paused ? video.play() : video.pause()));
-
-    video.addEventListener("play", () => { btn.classList.add("hidden"); btn.textContent = "❚❚"; });
-    video.addEventListener("pause", () => { btn.classList.remove("hidden"); btn.textContent = "▶"; });
-
-    // restore only when finished (so scrubbing doesn't kill it)
-    video.addEventListener("ended", () => {
-      toThumbnail(media, video);
-      if (activeVideo === video) activeVideo = activeMedia = null;
-    });
-
-    // 🔁 swap ONLY the media container contents
-    media.innerHTML = "";
-    media.appendChild(video);
-    media.appendChild(btn);
-
-    activeVideo = video;
-    activeMedia = media;
-
-    const p = video.play();
-    if (p && p.catch) p.catch(() => btn.classList.remove("hidden"));
+    return btn;
   };
 
-  const toThumbnail = (media, video) => {
+  /* ================= Swapping ================= */
+  const toPlayer = (img) => {
+    const wrapper = img.closest(".video");
+    const media = wrapper.querySelector(".video-media") || wrapper;
+    const rawSrc = img.dataset.video;
+    if (!rawSrc) return;
+
+    // Close any other active player
+    if (activePlayer && activeMedia && activeMedia !== media) {
+      toThumbnail(activeMedia);
+      activePlayer = activeMedia = null;
+    }
+
+    // save for restore
+    media.dataset.thumb = img.src;
+    media.dataset.alt = img.alt || "";
+    media.dataset.video = rawSrc;
+
+    let playerEl;
+
+    if (isYouTubeUrl(rawSrc)) {
+      const embed = toYouTubeEmbed(rawSrc);
+      playerEl = buildIframe(embed);
+      media.innerHTML = "";
+      media.appendChild(playerEl);
+    } else {
+      // Local MP4 (or other non-YouTube source)
+      const video = buildHTML5Video(rawSrc);
+      const btn = buildPlayToggleBtn();
+
+      video.addEventListener("click", (e) => {
+        if (isInControlBar(e, video)) return;
+        video.paused ? video.play() : video.pause();
+      });
+      btn.addEventListener("click", () => (video.paused ? video.play() : video.pause()));
+
+      video.addEventListener("play", () => {
+        btn.classList.add("hidden");
+        btn.textContent = "❚❚";
+      });
+      video.addEventListener("pause", () => {
+        btn.classList.remove("hidden");
+        btn.textContent = "▶";
+      });
+      video.addEventListener("ended", () => {
+        toThumbnail(media);
+        if (activePlayer === video) activePlayer = activeMedia = null;
+      });
+
+      media.innerHTML = "";
+      media.appendChild(video);
+      media.appendChild(btn);
+
+      const p = video.play();
+      if (p && p.catch) p.catch(() => btn.classList.remove("hidden"));
+      playerEl = video;
+    }
+
+    activePlayer = playerEl;
+    activeMedia = media;
+  };
+
+  const toThumbnail = (media) => {
+    const thumbSrc = media.dataset.thumb;
+    const alt = media.dataset.alt || "";
+    theDataVideo = media.dataset.video;
+
+    if (!thumbSrc || !theDataVideo) {
+      media.innerHTML = "";
+      return;
+    }
+
     const img = document.createElement("img");
     img.className = "thumbnail";
-    img.src = video.dataset.thumb;
-    img.alt = video.dataset.alt || "";
-    img.dataset.video = video.dataset.video;
+    img.src = thumbSrc;
+    img.alt = alt;
+    img.dataset.video = theDataVideo;
+    img.addEventListener("click", () => toPlayer(img));
+
+    media.innerHTML = "";
+    media.appendChild(img);
 
     const icon = document.createElement("div");
     icon.className = "thumb-play-icon";
     icon.textContent = "▶";
-
-    attachThumbHandler(img);
-
-    media.innerHTML = "";
-    media.appendChild(img);
     media.appendChild(icon);
   };
 
-  // init thumbnails + overlay
+  /* ================= Init ================= */
   document.querySelectorAll(".thumbnail").forEach((img) => {
-    attachThumbHandler(img);
+    img.addEventListener("click", () => toPlayer(img));
+    ensurePlayOverlay(img.closest(".video-media") || img.closest(".video"));
   });
+
   document.querySelectorAll(".video").forEach((wrap) => {
-    const media = wrap.querySelector(".video-media") || wrap;
-    if (!media.querySelector(".thumb-play-icon") && media.querySelector(".thumbnail")) {
-      const icon = document.createElement("div");
-      icon.className = "thumb-play-icon";
-      icon.textContent = "▶";
-      media.appendChild(icon);
-    }
+    ensurePlayOverlay(wrap.querySelector(".video-media") || wrap);
   });
 });
