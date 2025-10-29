@@ -1,0 +1,11 @@
+# Ignore large media folders and files
+video/
+*.mp4
+*.mov
+*.mkv
+*.avi
+*.zip
+*.iso
+Thumbnail/
+Images3/
+images4/
